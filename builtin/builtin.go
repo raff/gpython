@@ -51,6 +51,7 @@ func init() {
 		// py.MustNewMethod("max", builtin_max, 0, max_doc),
 		// py.MustNewMethod("min", builtin_min, 0, min_doc),
 		py.MustNewMethod("next", builtin_next, 0, next_doc),
+		py.MustNewMethod("open", builtin_open, 0, open_doc),
 		// py.MustNewMethod("oct", builtin_oct, 0, oct_doc),
 		py.MustNewMethod("ord", builtin_ord, 0, ord_doc),
 		py.MustNewMethod("pow", builtin_pow, 0, pow_doc),
@@ -442,6 +443,19 @@ returns package A when fromlist is empty, but its submodule B when
 fromlist is not empty.  Level is used to determine whether to perform 
 absolute or relative imports. 0 is absolute while a positive number
 is the number of parent directories to search relative to the current module.`
+
+const open_doc = `open(name[, mode[, buffering]]) -> file object
+
+Open a file using the file() type, returns a file object.  This is the
+preferred way to open a file.  See file.__doc__ for further information.`
+
+func builtin_open(self, obj py.Object) (py.Object, error) {
+	if filename, ok := obj.(py.String); ok {
+		return py.OpenFile(string(filename))
+	} else {
+		return nil, py.ExceptionNewf(py.TypeError, "coercing to Unicode: need string or buffer, %v found", obj.Type().Name)
+	}
+}
 
 const ord_doc = `ord(c) -> integer
 
