@@ -238,7 +238,6 @@ If the iterable is empty, return True.
 
 func builtin_all(self, seq py.Object) (py.Object, error) {
 	iter, err := py.Iter(seq)
-	res := false
 	if err != nil {
 		return nil, err
 	}
@@ -250,14 +249,11 @@ func builtin_all(self, seq py.Object) (py.Object, error) {
 			}
 			return nil, err
 		}
-		if py.ObjectIsTrue(item) {
-			res = true
-		} else {
-			res = false
-			break
+		if !py.ObjectIsTrue(item) {
+			return py.False, nil
 		}
 	}
-	return py.NewBool(res), nil
+	return py.True, nil
 }
 
 const any_doc = `any(iterable) -> bool
@@ -267,7 +263,6 @@ If the iterable is empty, Py_RETURN_FALSE."`
 
 func builtin_any(self, seq py.Object) (py.Object, error) {
 	iter, err := py.Iter(seq)
-	res := false
 	if err != nil {
 		return nil, err
 	}
@@ -280,11 +275,10 @@ func builtin_any(self, seq py.Object) (py.Object, error) {
 			return nil, err
 		}
 		if py.ObjectIsTrue(item) {
-			res = true
-			break
+			return py.True, nil
 		}
 	}
-	return py.NewBool(res), nil
+	return py.False, nil
 }
 
 const round_doc = `round(number[, ndigits]) -> number
