@@ -74,7 +74,7 @@ func init() {
 		"classmethod": py.ClassMethodType,
 		"complex":     py.ComplexType,
 		"dict":        py.StringDictType, // FIXME
-		// "enumerate":      py.EnumType,
+		"enumerate":   py.EnumerateType,
 		// "filter":         py.FilterType,
 		"float":     py.FloatType,
 		"frozenset": py.FrozenSetType,
@@ -92,7 +92,7 @@ func init() {
 		// "super":          py.SuperType,
 		"tuple": py.TupleType,
 		"type":  py.TypeType,
-		// "zip":            py.ZipType,
+		"zip":   py.ZipType,
 
 		// Exceptions
 		"ArithmeticError":           py.ArithmeticError,
