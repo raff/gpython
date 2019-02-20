@@ -29,7 +29,7 @@ func init() {
 		// py.MustNewMethod("callable", builtin_callable, 0, callable_doc),
 		py.MustNewMethod("chr", builtin_chr, 0, chr_doc),
 		py.MustNewMethod("compile", builtin_compile, 0, compile_doc),
-		// py.MustNewMethod("delattr", builtin_delattr, 0, delattr_doc),
+		py.MustNewMethod("delattr", builtin_delattr, 0, delattr_doc),
 		// py.MustNewMethod("dir", builtin_dir, 0, dir_doc),
 		py.MustNewMethod("divmod", builtin_divmod, 0, divmod_doc),
 		py.MustNewMethod("eval", py.InternalMethodEval, 0, eval_doc),
@@ -44,7 +44,7 @@ func init() {
 		// py.MustNewMethod("input", builtin_input, 0, input_doc),
 		// py.MustNewMethod("isinstance", builtin_isinstance, 0, isinstance_doc),
 		// py.MustNewMethod("issubclass", builtin_issubclass, 0, issubclass_doc),
-		// py.MustNewMethod("iter", builtin_iter, 0, iter_doc),
+		py.MustNewMethod("iter", builtin_iter, 0, iter_doc),
 		py.MustNewMethod("len", builtin_len, 0, len_doc),
 		py.MustNewMethod("locals", py.InternalMethodLocals, 0, locals_doc),
 		py.MustNewMethod("max", builtin_max, 0, max_doc),
@@ -633,6 +633,27 @@ func source_as_string(cmd py.Object, funcname, what string /*, PyCompilerFlags *
 	// 	return nil;
 }
 
+const delattr_doc = `Deletes the named attribute from the given object.
+
+delattr(x, 'y') is equivalent to  "del x.y"
+`
+
+func builtin_delattr(self py.Object, args py.Tuple) (py.Object, error) {
+	var v py.Object
+	var name py.Object
+
+	err := py.UnpackTuple(args, nil, "delattr", 2, 2, &v, &name)
+	if err != nil {
+		return nil, err
+	}
+
+	err = py.DeleteAttr(v, name)
+	if err != nil {
+		return nil, err
+	}
+	return py.None, nil
+}
+
 const compile_doc = `compile(source, filename, mode[, flags[, dont_inherit]]) -> code object
 
 Compile the source string (a Python module, statement or expression)
@@ -761,6 +782,39 @@ Read and execute code from an object, which can be a string or a code
 object.
 The globals and locals are dictionaries, defaulting to the current
 globals and locals.  If only globals is given, locals defaults to it.`
+
+const iter_doc = `iter(iterable) -> iterator
+iter(callable, sentinel) -> iterator
+
+Get an iterator from an object.  In the first form, the argument must
+supply its own iterator, or be a sequence.
+In the second form, the callable is called until it returns the sentinel.
+`
+
+func builtin_iter(self py.Object, args py.Tuple) (py.Object, error) {
+	nArgs := len(args)
+	if nArgs < 1 {
+		return nil, py.ExceptionNewf(py.TypeError,
+			"iter expected at least 1 arguments, got %d",
+			nArgs)
+	} else if nArgs > 2 {
+		return nil, py.ExceptionNewf(py.TypeError,
+			"iter expected at most 2 arguments, got %d",
+			nArgs)
+	}
+
+	v := args[0]
+	if nArgs == 1 {
+		return py.Iter(v)
+	}
+	_, ok := v.(*py.Function)
+	sentinel := args[1]
+	if !ok {
+		return nil, py.ExceptionNewf(py.TypeError,
+			"iter(v, w): v must be callable")
+	}
+	return py.NewCallIterator(v, sentinel), nil
+}
 
 // For code see vm/builtin.go
 
