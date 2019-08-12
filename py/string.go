@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -33,6 +34,187 @@ Otherwise, returns the result of object.__str__() (if defined)
 or repr(object).
 encoding defaults to sys.getdefaultencoding().
 errors defaults to 'strict'.`, StrNew, nil)
+
+// Escape the py.String
+func StringEscape(a String, ascii bool) string {
+	s := string(a)
+	var out bytes.Buffer
+	quote := '\''
+	if strings.ContainsRune(s, '\'') && !strings.ContainsRune(s, '"') {
+		quote = '"'
+	}
+	if !ascii {
+		out.WriteRune(quote)
+	}
+	for _, c := range s {
+		switch {
+		case c < 0x20:
+			switch c {
+			case '\t':
+				out.WriteString(`\t`)
+			case '\n':
+				out.WriteString(`\n`)
+			case '\r':
+				out.WriteString(`\r`)
+			default:
+				fmt.Fprintf(&out, `\x%02x`, c)
+			}
+		case !ascii && c < 0x7F:
+			if c == '\\' || (quote == '\'' && c == '\'') || (quote == '"' && c == '"') {
+				out.WriteRune('\\')
+			}
+			out.WriteRune(c)
+		case c < 0x100:
+			if ascii || strconv.IsPrint(c) {
+				out.WriteRune(c)
+			} else {
+				fmt.Fprintf(&out, "\\x%02x", c)
+			}
+		case c < 0x10000:
+			if !ascii && strconv.IsPrint(c) {
+				out.WriteRune(c)
+			} else {
+				fmt.Fprintf(&out, "\\u%04x", c)
+			}
+		default:
+			if !ascii && strconv.IsPrint(c) {
+				out.WriteRune(c)
+			} else {
+				fmt.Fprintf(&out, "\\U%08x", c)
+			}
+		}
+	}
+	if !ascii {
+		out.WriteRune(quote)
+	}
+	return out.String()
+}
+
+// standard golang strings.Fields doesn't have a 'first N' argument
+func fieldsN(s string, n int) []string {
+	out := []string{}
+	cur := []rune{}
+	r := []rune(s)
+	for _, c := range r {
+		//until we have covered the first N elements, multiple white-spaces are 'merged'
+		if n < 0 || len(out) < n {
+			if unicode.IsSpace(c) {
+				if len(cur) > 0 {
+					out = append(out, string(cur))
+					cur = []rune{}
+				}
+			} else {
+				cur = append(cur, c)
+			}
+			//until we see the next letter, after collecting the first N fields, continue to merge whitespaces
+		} else if len(out) == n && len(cur) == 0 {
+			if !unicode.IsSpace(c) {
+				cur = append(cur, c)
+			}
+			//now that enough words have been collected, just copy into the last element
+		} else {
+			cur = append(cur, c)
+		}
+	}
+	if len(cur) > 0 {
+		out = append(out, string(cur))
+	}
+	return out
+}
+
+func init() {
+	StringType.Dict["split"] = MustNewMethod("split", func(self Object, args Tuple) (Object, error) {
+		selfStr := self.(String)
+		var value Object = None
+		zeroRemove := true
+		if len(args) > 0 {
+			if _, ok := args[0].(NoneType); !ok {
+				value = args[0]
+				zeroRemove = false
+			}
+		}
+		var maxSplit int = -2
+		if len(args) > 1 {
+			if m, ok := args[1].(Int); ok {
+				maxSplit = int(m)
+			}
+		}
+		valArray := []string{}
+		if valStr, ok := value.(String); ok {
+			valArray = strings.SplitN(string(selfStr), string(valStr), maxSplit+1)
+		} else if _, ok := value.(NoneType); ok {
+			valArray = fieldsN(string(selfStr), maxSplit)
+		} else {
+			return nil, ExceptionNewf(TypeError, "Can't convert '%s' object to str implicitly", value.Type())
+		}
+		o := List{}
+		for _, j := range valArray {
+			if len(j) > 0 || !zeroRemove {
+				o.Items = append(o.Items, String(j))
+			}
+		}
+		return &o, nil
+	}, 0, "split(sub) -> split string with sub.")
+
+	StringType.Dict["startswith"] = MustNewMethod("startswith", func(self Object, args Tuple) (Object, error) {
+		selfStr := string(self.(String))
+		prefix := []string{}
+		if len(args) > 0 {
+			if s, ok := args[0].(String); ok {
+				prefix = append(prefix, string(s))
+			} else if s, ok := args[0].(Tuple); ok {
+				for _, t := range s {
+					if v, ok := t.(String); ok {
+						prefix = append(prefix, string(v))
+					}
+				}
+			} else {
+				return nil, ExceptionNewf(TypeError, "startswith first arg must be str, unicode, or tuple, not %s", args[0].Type())
+			}
+		} else {
+			return nil, ExceptionNewf(TypeError, "startswith() takes at least 1 argument (0 given)")
+		}
+		if len(args) > 1 {
+			if s, ok := args[1].(Int); ok {
+				selfStr = selfStr[s:len(selfStr)]
+			}
+		}
+
+		for _, s := range prefix {
+			if strings.HasPrefix(selfStr, s) {
+				return Bool(true), nil
+			}
+		}
+		return Bool(false), nil
+	}, 0, "startswith(prefix[, start[, end]]) -> bool")
+
+	StringType.Dict["endswith"] = MustNewMethod("endswith", func(self Object, args Tuple) (Object, error) {
+		selfStr := string(self.(String))
+		suffix := []string{}
+		if len(args) > 0 {
+			if s, ok := args[0].(String); ok {
+				suffix = append(suffix, string(s))
+			} else if s, ok := args[0].(Tuple); ok {
+				for _, t := range s {
+					if v, ok := t.(String); ok {
+						suffix = append(suffix, string(v))
+					}
+				}
+			} else {
+				return nil, ExceptionNewf(TypeError, "endswith first arg must be str, unicode, or tuple, not %s", args[0].Type())
+			}
+		} else {
+			return nil, ExceptionNewf(TypeError, "endswith() takes at least 1 argument (0 given)")
+		}
+		for _, s := range suffix {
+			if strings.HasSuffix(selfStr, s) {
+				return Bool(true), nil
+			}
+		}
+		return Bool(false), nil
+	}, 0, "endswith(suffix[, start[, end]]) -> bool")
+
+}
 
 // Type of this object
 func (s String) Type() *Type {
@@ -67,54 +249,8 @@ func (a String) M__str__() (Object, error) {
 }
 
 func (a String) M__repr__() (Object, error) {
-	// FIXME combine this with parser/stringescape.go into file in py?
-	s := string(a)
-	var out bytes.Buffer
-	quote := '\''
-	if strings.ContainsRune(s, '\'') && !strings.ContainsRune(s, '"') {
-		quote = '"'
-	}
-	out.WriteRune(quote)
-	for _, c := range s {
-		switch {
-		case c < 0x20:
-			switch c {
-			case '\t':
-				out.WriteString(`\t`)
-			case '\n':
-				out.WriteString(`\n`)
-			case '\r':
-				out.WriteString(`\r`)
-			default:
-				fmt.Fprintf(&out, `\x%02x`, c)
-			}
-		case c < 0x7F:
-			if c == '\\' || (quote == '\'' && c == '\'') || (quote == '"' && c == '"') {
-				out.WriteRune('\\')
-			}
-			out.WriteRune(c)
-		case c < 0x100:
-			if strconv.IsPrint(c) {
-				out.WriteRune(c)
-			} else {
-				fmt.Fprintf(&out, "\\x%02x", c)
-			}
-		case c < 0x10000:
-			if strconv.IsPrint(c) {
-				out.WriteRune(c)
-			} else {
-				fmt.Fprintf(&out, "\\u%04x", c)
-			}
-		default:
-			if strconv.IsPrint(c) {
-				out.WriteRune(c)
-			} else {
-				fmt.Fprintf(&out, "\\U%08x", c)
-			}
-		}
-	}
-	out.WriteRune(quote)
-	return String(out.String()), nil
+	out := StringEscape(a, false)
+	return String(out), nil
 }
 
 func (s String) M__bool__() (Object, error) {

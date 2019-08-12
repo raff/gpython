@@ -27,6 +27,17 @@ var (
 	expectingDict  = ExceptionNewf(TypeError, "a dict is required")
 )
 
+func init() {
+	StringDictType.Dict["items"] = MustNewMethod("items", func(self Object, args Tuple) (Object, error) {
+		sMap := self.(StringDict)
+		o := make([]Object, 0, len(sMap))
+		for k, v := range sMap {
+			o = append(o, Tuple{String(k), v})
+		}
+		return NewIterator(o), nil
+	}, 0, "items() -> list of D's (key, value) pairs, as 2-tuples")
+}
+
 // String to object dictionary
 //
 // Used for variables etc where the keys can only be strings
@@ -100,6 +111,15 @@ func (a StringDict) M__repr__() (Object, error) {
 	return String(out.String()), nil
 }
 
+// Returns a list of keys from the dict
+func (d StringDict) M__iter__() (Object, error) {
+	o := make([]Object, 0, len(d))
+	for k := range d {
+		o = append(o, String(k))
+	}
+	return NewIterator(o), nil
+}
+
 func (d StringDict) M__getitem__(key Object) (Object, error) {
 	str, ok := key.(String)
 	if ok {
@@ -153,4 +173,16 @@ func (a StringDict) M__ne__(other Object) (Object, error) {
 		return False, nil
 	}
 	return True, nil
+}
+
+func (a StringDict) M__contains__(other Object) (Object, error) {
+	key, ok := other.(String)
+	if !ok {
+		return nil, ExceptionNewf(KeyError, "FIXME can only have string keys!: %v", key)
+	}
+
+	if _, ok := a[string(key)]; ok {
+		return True, nil
+	}
+	return False, nil
 }

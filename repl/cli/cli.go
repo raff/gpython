@@ -126,10 +126,10 @@ func RunREPL() {
 	defer rl.Close()
 	err := rl.ReadHistory()
 	if err != nil {
-		fmt.Printf("Failed to open history: %v\n", err)
+		if !os.IsNotExist(err) {
+			fmt.Printf("Failed to open history: %v\n", err)
+		}
 	}
-
-	fmt.Printf("Gpython 3.4.0\n")
 
 	for {
 		line, err := rl.Prompt(rl.prompt)
