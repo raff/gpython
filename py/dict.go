@@ -29,6 +29,10 @@ var (
 
 func init() {
 	StringDictType.Dict["items"] = MustNewMethod("items", func(self Object, args Tuple) (Object, error) {
+		err := UnpackTuple(args, nil, "items", 0, 0)
+		if err != nil {
+			return nil, err
+		}
 		sMap := self.(StringDict)
 		o := make([]Object, 0, len(sMap))
 		for k, v := range sMap {
@@ -36,6 +40,30 @@ func init() {
 		}
 		return NewIterator(o), nil
 	}, 0, "items() -> list of D's (key, value) pairs, as 2-tuples")
+
+	StringDictType.Dict["get"] = MustNewMethod("get", func(self Object, args Tuple) (Object, error) {
+		var length = len(args)
+		switch {
+		case length == 0:
+			return nil, ExceptionNewf(TypeError, "%s expected at least 1 arguments, got %d", "items()", length)
+		case length > 2:
+			return nil, ExceptionNewf(TypeError, "%s expected at most 2 arguments, got %d", "items()", length)
+		}
+		sMap := self.(StringDict)
+		if str, ok := args[0].(String); ok {
+			if res, ok := sMap[string(str)]; ok {
+				return res, nil
+			}
+
+			switch length {
+			case 2:
+				return args[1], nil
+			default:
+				return None, nil
+			}
+		}
+		return nil, ExceptionNewf(KeyError, "%v", args[0])
+	}, 0, "gets(key, default) -> If there is a val corresponding to key, return val, otherwise default")
 }
 
 // String to object dictionary
@@ -168,6 +196,9 @@ func (a StringDict) M__ne__(other Object) (Object, error) {
 	res, err := a.M__eq__(other)
 	if err != nil {
 		return nil, err
+	}
+	if res == NotImplemented {
+		return res, nil
 	}
 	if res == True {
 		return False, nil

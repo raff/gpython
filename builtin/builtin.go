@@ -6,6 +6,8 @@
 package builtin
 
 import (
+	"fmt"
+	"math/big"
 	"unicode/utf8"
 
 	"github.com/go-python/gpython/compile"
@@ -25,7 +27,7 @@ func init() {
 		py.MustNewMethod("all", builtin_all, 0, all_doc),
 		py.MustNewMethod("any", builtin_any, 0, any_doc),
 		py.MustNewMethod("ascii", builtin_ascii, 0, ascii_doc),
-		// py.MustNewMethod("bin", builtin_bin, 0, bin_doc),
+		py.MustNewMethod("bin", builtin_bin, 0, bin_doc),
 		// py.MustNewMethod("callable", builtin_callable, 0, callable_doc),
 		py.MustNewMethod("chr", builtin_chr, 0, chr_doc),
 		py.MustNewMethod("compile", builtin_compile, 0, compile_doc),
@@ -39,10 +41,10 @@ func init() {
 		py.MustNewMethod("globals", py.InternalMethodGlobals, 0, globals_doc),
 		py.MustNewMethod("hasattr", builtin_hasattr, 0, hasattr_doc),
 		// py.MustNewMethod("hash", builtin_hash, 0, hash_doc),
-		// py.MustNewMethod("hex", builtin_hex, 0, hex_doc),
+		py.MustNewMethod("hex", builtin_hex, 0, hex_doc),
 		// py.MustNewMethod("id", builtin_id, 0, id_doc),
 		// py.MustNewMethod("input", builtin_input, 0, input_doc),
-		// py.MustNewMethod("isinstance", builtin_isinstance, 0, isinstance_doc),
+		py.MustNewMethod("isinstance", builtin_isinstance, 0, isinstance_doc),
 		// py.MustNewMethod("issubclass", builtin_issubclass, 0, issubclass_doc),
 		py.MustNewMethod("iter", builtin_iter, 0, iter_doc),
 		py.MustNewMethod("len", builtin_len, 0, len_doc),
@@ -58,7 +60,7 @@ func init() {
 		py.MustNewMethod("repr", builtin_repr, 0, repr_doc),
 		py.MustNewMethod("round", builtin_round, 0, round_doc),
 		py.MustNewMethod("setattr", builtin_setattr, 0, setattr_doc),
-		// py.MustNewMethod("sorted", builtin_sorted, 0, sorted_doc),
+		py.MustNewMethod("sorted", builtin_sorted, 0, sorted_doc),
 		py.MustNewMethod("sum", builtin_sum, 0, sum_doc),
 		// py.MustNewMethod("vars", builtin_vars, 0, vars_doc),
 	}
@@ -85,8 +87,8 @@ func init() {
 		"object": py.ObjectType,
 		"range":  py.RangeType,
 		// "reversed":       py.ReversedType,
-		"set": py.SetType,
-		// "slice":          py.SliceType,
+		"set":          py.SetType,
+		"slice":        py.SliceType,
 		"staticmethod": py.StaticMethodType,
 		"str":          py.StringType,
 		// "super":          py.SuperType,
@@ -309,7 +311,12 @@ func builtin_any(self, seq py.Object) (py.Object, error) {
 	return py.False, nil
 }
 
-const ascii_doc = `
+const ascii_doc = `Return an ASCII-only representation of an object.
+
+As repr(), return a string containing a printable representation of an
+object, but escape the non-ASCII characters in the string returned by
+repr() using \\x, \\u or \\U escapes. This generates a string similar
+to that returned by repr() in Python 2.
 `
 
 func builtin_ascii(self, o py.Object) (py.Object, error) {
@@ -320,6 +327,29 @@ func builtin_ascii(self, o py.Object) (py.Object, error) {
 	repr := reprObj.(py.String)
 	out := py.StringEscape(repr, true)
 	return py.String(out), err
+}
+
+const bin_doc = `Return the binary representation of an integer.
+
+>>> bin(2796202)
+'0b1010101010101010101010'
+`
+
+func builtin_bin(self, o py.Object) (py.Object, error) {
+	bigint, ok := py.ConvertToBigInt(o)
+	if !ok {
+		return nil, py.ExceptionNewf(py.TypeError, "'%s' object cannot be interpreted as an integer", o.Type().Name)
+	}
+
+	value := (*big.Int)(bigint)
+	var out string
+	if value.Sign() < 0 {
+		value = new(big.Int).Abs(value)
+		out = fmt.Sprintf("-0b%b", value)
+	} else {
+		out = fmt.Sprintf("0b%b", value)
+	}
+	return py.String(out), nil
 }
 
 const round_doc = `round(number[, ndigits]) -> number
@@ -796,6 +826,91 @@ object.
 The globals and locals are dictionaries, defaulting to the current
 globals and locals.  If only globals is given, locals defaults to it.`
 
+const hex_doc = `hex(number) -> string
+
+Return the hexadecimal representation of an integer.
+
+   >>> hex(12648430)
+   '0xc0ffee'
+`
+
+func builtin_hex(self, v py.Object) (py.Object, error) {
+	var (
+		i   int64
+		err error
+	)
+	switch v := v.(type) {
+	case *py.BigInt:
+		// test bigint first to make sure we correctly handle the case
+		// where int64 isn't large enough.
+		vv := (*big.Int)(v)
+		format := "%#x"
+		if vv.Cmp(big.NewInt(0)) == -1 {
+			format = "%+#x"
+		}
+		str := fmt.Sprintf(format, vv)
+		return py.String(str), nil
+	case py.IGoInt64:
+		i, err = v.GoInt64()
+	case py.IGoInt:
+		var vv int
+		vv, err = v.GoInt()
+		i = int64(vv)
+	default:
+		return nil, py.ExceptionNewf(py.TypeError, "'%s' object cannot be interpreted as an integer", v.Type().Name)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	format := "%#x"
+	if i < 0 {
+		format = "%+#x"
+	}
+	str := fmt.Sprintf(format, i)
+	return py.String(str), nil
+}
+
+const isinstance_doc = `isinstance(obj, class_or_tuple) -> bool
+
+Return whether an object is an instance of a class or of a subclass thereof.
+
+A tuple, as in isinstance(x, (A, B, ...)), may be given as the target to
+check against. This is equivalent to isinstance(x, A) or isinstance(x, B)
+or ... etc.
+`
+
+func isinstance(obj py.Object, classOrTuple py.Object) (py.Bool, error) {
+	switch classOrTuple.(type) {
+	case py.Tuple:
+		var class_tuple = classOrTuple.(py.Tuple)
+		for idx := range class_tuple {
+			res, _ := isinstance(obj, class_tuple[idx])
+			if res {
+				return res, nil
+			}
+		}
+		return false, nil
+	default:
+		if classOrTuple.Type().ObjectType != py.TypeType {
+			return false, py.ExceptionNewf(py.TypeError, "isinstance() arg 2 must be a type or tuple of types")
+		}
+		return obj.Type() == classOrTuple, nil
+	}
+}
+
+func builtin_isinstance(self py.Object, args py.Tuple) (py.Object, error) {
+	var obj py.Object
+	var classOrTuple py.Object
+	err := py.UnpackTuple(args, nil, "isinstance", 2, 2, &obj, &classOrTuple)
+	if err != nil {
+		return nil, err
+	}
+
+	return isinstance(obj, classOrTuple)
+}
+
 const iter_doc = `iter(iterable) -> iterator
 iter(callable, sentinel) -> iterator
 
@@ -1043,4 +1158,29 @@ func builtin_sum(self py.Object, args py.Tuple) (py.Object, error) {
 		}
 	}
 	return start, nil
+}
+
+const sorted_doc = `sorted(iterable, key=None, reverse=False)
+
+Return a new list containing all items from the iterable in ascending order.
+
+A custom key function can be supplied to customize the sort order, and the
+reverse flag can be set to request the result in descending order.`
+
+func builtin_sorted(self py.Object, args py.Tuple, kwargs py.StringDict) (py.Object, error) {
+	const funcName = "sorted"
+	var iterable py.Object
+	err := py.UnpackTuple(args, nil, funcName, 1, 1, &iterable)
+	if err != nil {
+		return nil, err
+	}
+	l, err := py.SequenceList(iterable)
+	if err != nil {
+		return nil, err
+	}
+	err = py.SortInPlace(l, kwargs, funcName)
+	if err != nil {
+		return nil, err
+	}
+	return l, nil
 }

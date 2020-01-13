@@ -8,6 +8,8 @@
 
 package py
 
+import "bytes"
+
 var SetType = NewTypeX("set", "set() -> new empty set object\nset(iterable) -> new set object\n\nBuild an unordered collection of unique elements.", SetNew, nil)
 
 type SetValue struct{}
@@ -56,11 +58,10 @@ func SetNew(metatype *Type, args Tuple, kwargs StringDict) (Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	if iterable == nil {
-		return NewSet(), nil
+	if iterable != nil {
+		return SequenceSet(iterable)
 	}
-	// FIXME should be able to initialise from an iterable!
-	return NewSetFromItems(iterable.(Tuple)), nil
+	return NewSet(), nil
 }
 
 var FrozenSetType = NewType("frozenset", "frozenset() -> empty frozenset object\nfrozenset(iterable) -> frozenset object\n\nBuild an immutable unordered collection of unique elements.")
@@ -103,12 +104,99 @@ func (s *Set) M__bool__() (Object, error) {
 	return NewBool(len(s.items) > 0), nil
 }
 
+func (s *Set) M__repr__() (Object, error) {
+	var out bytes.Buffer
+	out.WriteRune('{')
+	spacer := false
+	for item := range s.items {
+		if spacer {
+			out.WriteString(", ")
+		}
+		str, err := ReprAsString(item)
+		if err != nil {
+			return nil, err
+		}
+		out.WriteString(str)
+		spacer = true
+	}
+	out.WriteRune('}')
+	return String(out.String()), nil
+}
+
 func (s *Set) M__iter__() (Object, error) {
 	items := make(Tuple, 0, len(s.items))
 	for item := range s.items {
 		items = append(items, item)
 	}
 	return NewIterator(items), nil
+}
+
+func (s *Set) M__and__(other Object) (Object, error) {
+	ret := NewSet()
+	b, ok := other.(*Set)
+	if !ok {
+		return nil, ExceptionNewf(TypeError, "unsupported operand type(s) for &: '%s' and '%s'", s.Type().Name, other.Type().Name)
+	}
+	for i := range b.items {
+		if _, ok := s.items[i]; ok {
+			ret.items[i] = SetValue{}
+		}
+	}
+	return ret, nil
+}
+
+func (s *Set) M__or__(other Object) (Object, error) {
+	ret := NewSet()
+	b, ok := other.(*Set)
+	if !ok {
+		return nil, ExceptionNewf(TypeError, "unsupported operand type(s) for &: '%s' and '%s'", s.Type().Name, other.Type().Name)
+	}
+	for j := range s.items {
+		ret.items[j] = SetValue{}
+	}
+	for i := range b.items {
+		if _, ok := s.items[i]; !ok {
+			ret.items[i] = SetValue{}
+		}
+	}
+	return ret, nil
+}
+
+func (s *Set) M__sub__(other Object) (Object, error) {
+	ret := NewSet()
+	b, ok := other.(*Set)
+	if !ok {
+		return nil, ExceptionNewf(TypeError, "unsupported operand type(s) for &: '%s' and '%s'", s.Type().Name, other.Type().Name)
+	}
+	for j := range s.items {
+		ret.items[j] = SetValue{}
+	}
+	for i := range b.items {
+		if _, ok := s.items[i]; ok {
+			delete(ret.items, i)
+		}
+	}
+	return ret, nil
+}
+
+func (s *Set) M__xor__(other Object) (Object, error) {
+	ret := NewSet()
+	b, ok := other.(*Set)
+	if !ok {
+		return nil, ExceptionNewf(TypeError, "unsupported operand type(s) for &: '%s' and '%s'", s.Type().Name, other.Type().Name)
+	}
+	for j := range s.items {
+		ret.items[j] = SetValue{}
+	}
+	for i := range b.items {
+		_, ok := s.items[i]
+		if ok {
+			delete(ret.items, i)
+		} else {
+			ret.items[i] = SetValue{}
+		}
+	}
+	return ret, nil
 }
 
 // Check interface is satisfied
@@ -147,6 +235,9 @@ func (a *Set) M__ne__(other Object) (Object, error) {
 	eq, err := a.M__eq__(other)
 	if err != nil {
 		return nil, err
+	}
+	if eq == NotImplemented {
+		return eq, nil
 	}
 	if eq == True {
 		return False, nil

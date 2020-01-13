@@ -1,6 +1,8 @@
-# Copyright 2018 The go-python Authors.  All rights reserved.
+# Copyright 2019 The go-python Authors.  All rights reserved.
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
+
+from libtest import assertRaises
 
 doc="abs"
 assert abs(0) == 0
@@ -24,6 +26,19 @@ assert ascii('hello world') == "'hello world'"
 assert ascii('안녕 세상') == "'\\uc548\\ub155 \\uc138\\uc0c1'"
 assert ascii(chr(0x10001)) == "'\\U00010001'"
 assert ascii('안녕 gpython') == "'\\uc548\\ub155 gpython'"
+
+doc="bin"
+assert bin(False) == '0b0'
+assert bin(True) == '0b1'
+assert bin(0) == '0b0'
+assert bin(1) == '0b1'
+assert bin(-1) == '-0b1'
+assert bin(10) == '0b1010'
+assert bin(-10) == '-0b1010'
+assert bin(2**32) == '0b100000000000000000000000000000000'
+assert bin(2**32-1) == '0b11111111111111111111111111111111'
+assert bin(-(2**32)) == '-0b100000000000000000000000000000000'
+assert bin(-(2**32-1)) == '-0b11111111111111111111111111111111'
 
 doc="chr"
 assert chr(65) == "A"
@@ -137,6 +152,29 @@ try:
 except ValueError:
     ok = True
 assert ok, "ValueError not raised"
+
+doc="hex"
+assert hex( 0)=="0x0",    "hex(0)"
+assert hex( 1)=="0x1",    "hex(1)"
+assert hex(42)=="0x2a",   "hex(42)"
+assert hex( -0)=="0x0",   "hex(-0)"
+assert hex( -1)=="-0x1",  "hex(-1)"
+assert hex(-42)=="-0x2a", "hex(-42)"
+assert hex( 1<<64) ==  "0x10000000000000000", "hex(1<<64)"
+assert hex(-1<<64) == "-0x10000000000000000", "hex(-1<<64)"
+assert hex( 1<<128) ==  "0x100000000000000000000000000000000", "hex(1<<128)"
+assert hex(-1<<128) == "-0x100000000000000000000000000000000", "hex(-1<<128)"
+assertRaises(TypeError, hex, 10.0) ## TypeError: 'float' object cannot be interpreted as an integer
+assertRaises(TypeError, hex, float(0)) ## TypeError: 'float' object cannot be interpreted as an integer
+
+doc="isinstance"
+class A:
+    pass
+a = A()
+assert isinstance(1, (str, tuple, int))
+assert isinstance(a, (str, (tuple, (A, ))))
+assertRaises(TypeError, isinstance, 1, (A, ), "foo")
+assertRaises(TypeError, isinstance, 1, [A, "foo"])
 
 doc="iter"
 cnt = 0
@@ -316,6 +354,50 @@ except AttributeError as e:
 finally:
     assert ok
 
+doc="sorted"
+a = [3, 1.1, 1, 2]
+assert sorted(a) == [1, 1.1, 2, 3]
+assert sorted(sorted(a)) == [1, 1.1, 2, 3]
+assert sorted(a, reverse=True) == [3, 2, 1.1, 1]
+assert sorted(a, key=lambda l: l+1) == [1, 1.1, 2, 3]
+s = [2.0, 2, 1, 1.0]
+assert sorted(s, key=lambda l: 0) == [2.0, 2, 1, 1.0]
+assert [type(t) for t in sorted(s, key=lambda l: 0)] == [float, int, int, float]
+assert sorted(s) == [1, 1.0, 2.0, 2]
+assert [type(t) for t in sorted(s)] == [int, float, float, int]
+
+try:
+    sorted([2.0, "abc"])
+except TypeError:
+    pass
+else:
+    assert False
+
+assert sorted([]) == []
+assert sorted([0]) == [0]
+s = [0, 1]
+try:
+    # Sorting a list of len >= 2 with uncallable key must fail on all Python implementations.
+    sorted(s, key=1)
+except TypeError:
+    pass
+else:
+    assert False
+
+try:
+    sorted(1)
+except TypeError:
+    pass
+else:
+    assert False
+
+try:
+    sorted()
+except TypeError:
+    pass
+else:
+    assert False
+
 doc="sum"
 assert sum([1,2,3]) == 6
 assert sum([1,2,3], 3) == 9
@@ -356,7 +438,6 @@ assert [e for e in zip(a, b)] == [(3,8), (4,9), (5,10), (6,11), (7,12)]
 try:
     zip(1,2,3)
 except TypeError as e:
-    print(e.args[0])
     if e.args[0] != "zip argument #1 must support iteration":
         raise
     ok = True
